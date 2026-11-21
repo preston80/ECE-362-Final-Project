@@ -5,6 +5,7 @@
 #include "audio_processing.h"
 #include "servo.h"
 #include "ultrasonic.h"
+#include "display.h"
 
 typedef struct {
     float angles[AUDIO_TRACK_WINDOW];
@@ -125,6 +126,14 @@ int main(void)
 
     servo_init();
     ultrasonic_init();
+    display_init(DISPLAY_ROTATION_0);
+    display_fill_screen(COLOR_RED);
+    sleep_ms(500);
+    display_fill_screen(COLOR_GREEN);
+    sleep_ms(500);
+    display_fill_screen(COLOR_BLUE);
+    sleep_ms(500);
+    display_fill_screen(COLOR_BLACK);
 
     if (!microphone_init()) {
         printf("ERROR: microphone_init() failed!\n");
@@ -136,10 +145,12 @@ int main(void)
     float angle = 0.0f;
     float filtered_angle = 0.0f;
     float distance_cm = -1.0f;
+    float display_direction_deg = 0.0f;
+    uint64_t last_sound_ms = 0;
     absolute_time_t next_distance_read = get_absolute_time();
     static angle_tracker_t tracker;
 
-    printf("Sound tracking ready. Make a sharp sound to either side.\n");
+    printf("Sound tracking ready.\n");
 
     while (true) {
         if (time_reached(next_distance_read)) {
@@ -147,10 +158,23 @@ int main(void)
             next_distance_read = make_timeout_time_ms(250);
         }
 
+        uint64_t now_ms = to_ms_since_boot(get_absolute_time());
+        bool person_present =
+            distance_cm >= DISPLAY_PERSON_MIN_CM &&
+            distance_cm <= DISPLAY_PERSON_MAX_CM;
+        bool sound_detected =
+            person_present &&
+            last_sound_ms != 0 &&
+            now_ms - last_sound_ms <= DISPLAY_SOUND_HOLD_MS;
+        display_show_tracking(person_present, sound_detected,
+                              distance_cm, display_direction_deg);
+
         if (!microphone_read_samples(left_buf, right_buf, MIC_TEST_FRAMES)) {
             printf("ERROR: microphone sample capture failed.\n");
         } else if (audio_estimate_angle(left_buf, right_buf, MIC_TEST_FRAMES, &angle) &&
                    update_angle_tracker(&tracker, angle, &filtered_angle)) {
+            last_sound_ms = to_ms_since_boot(get_absolute_time());
+            display_direction_deg = -filtered_angle;
             float target_angle =
                 ((SERVO_MIN_ANGLE + SERVO_MAX_ANGLE) * 0.5f) +
                 (-filtered_angle * AUDIO_TO_SERVO_GAIN);
@@ -176,6 +200,13 @@ int main(void)
                        (double)distance_cm);
             }
         }
+        now_ms = to_ms_since_boot(get_absolute_time());
+        sound_detected =
+            person_present &&
+            last_sound_ms != 0 &&
+            now_ms - last_sound_ms <= DISPLAY_SOUND_HOLD_MS;
+        display_show_tracking(person_present, sound_detected,
+                              distance_cm, display_direction_deg);
         sleep_ms(10);
     }
 }

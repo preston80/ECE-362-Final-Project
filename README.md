@@ -8,7 +8,10 @@ Pico SDK and PlatformIO.
 - The stereo I2S microphones on GPIO 6 (BCLK), GPIO 7 (WS), and GPIO 8 (DATA)
   estimate the direction of a sound.
 - The ultrasonic sensor uses GPIO 10 (TRIG) and GPIO 11 (ECHO). The servo
-  distance is reported periodically and does not block audio tracking.
+  distance is reported periodically. The display shows a speaker direction
+  only when distance is 20–150 cm and the microphones detect a sound direction.
+- The ILI9341 240x320 SPI display uses SPI1: DC GPIO 24, CS GPIO 25, SCK GPIO 26,
+  MOSI GPIO 27, and RESET GPIO 28.
 - The servo signal is on GPIO 18. The negated detected sound angle is added to
   the 90-degree center position with a 3x response gain. Weak audio correlation is
   rejected; accepted angles use a rolling median, exponential smoothing, and a

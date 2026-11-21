@@ -45,6 +45,9 @@
 
 #define ULTRASONIC_TRIG_PIN       10u
 #define ULTRASONIC_ECHO_PIN       11u
+#define DISPLAY_PERSON_MIN_CM     20.0f
+#define DISPLAY_PERSON_MAX_CM     150.0f
+#define DISPLAY_SOUND_HOLD_MS     1500u
 #define AUDIO_TO_SERVO_GAIN       3.0f
 #define AUDIO_TRACK_WINDOW        3u
 #define AUDIO_TRACK_MIN_HITS      2u

@@ -7,7 +7,7 @@
 
 // SPI Peripheral & Pin Assignments (SPI1 on GP24-GP28)
 #define DISPLAY_SPI_PORT    spi1
-#define DISPLAY_BAUDRATE    (40 * 1000 * 1000) // 40 MHz SPI clock
+#define DISPLAY_BAUDRATE    (10 * 1000 * 1000) // Conservative ILI9341 SPI clock
 
 #define DISPLAY_PIN_DC      24
 #define DISPLAY_PIN_CS      25
@@ -44,6 +44,10 @@ void display_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 void display_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
 void display_fill_screen(uint16_t color);
 void display_draw_pixel(uint16_t x, uint16_t y, uint16_t color);
+void display_show_tracking(bool person_present,
+                           bool sound_detected,
+                           float distance_cm,
+                           float direction_deg);
 
 uint16_t display_get_width(void);
 uint16_t display_get_height(void);
