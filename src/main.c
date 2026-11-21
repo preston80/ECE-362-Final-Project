@@ -126,7 +126,7 @@ int main(void)
 
     servo_init();
     ultrasonic_init();
-    display_init(DISPLAY_ROTATION_0);
+    display_init(DISPLAY_ROTATION_270);
     display_fill_screen(COLOR_RED);
     sleep_ms(500);
     display_fill_screen(COLOR_GREEN);
@@ -157,17 +157,6 @@ int main(void)
             distance_cm = ultrasonic_read_cm();
             next_distance_read = make_timeout_time_ms(250);
         }
-
-        uint64_t now_ms = to_ms_since_boot(get_absolute_time());
-        bool person_present =
-            distance_cm >= DISPLAY_PERSON_MIN_CM &&
-            distance_cm <= DISPLAY_PERSON_MAX_CM;
-        bool sound_detected =
-            person_present &&
-            last_sound_ms != 0 &&
-            now_ms - last_sound_ms <= DISPLAY_SOUND_HOLD_MS;
-        display_show_tracking(person_present, sound_detected,
-                              distance_cm, display_direction_deg);
 
         if (!microphone_read_samples(left_buf, right_buf, MIC_TEST_FRAMES)) {
             printf("ERROR: microphone sample capture failed.\n");
@@ -200,12 +189,14 @@ int main(void)
                        (double)distance_cm);
             }
         }
-        now_ms = to_ms_since_boot(get_absolute_time());
-        sound_detected =
-            person_present &&
+        uint64_t now_ms = to_ms_since_boot(get_absolute_time());
+        bool object_in_range =
+            distance_cm >= DISPLAY_OBJECT_MIN_CM &&
+            distance_cm <= DISPLAY_OBJECT_MAX_CM;
+        bool sound_detected =
             last_sound_ms != 0 &&
             now_ms - last_sound_ms <= DISPLAY_SOUND_HOLD_MS;
-        display_show_tracking(person_present, sound_detected,
+        display_show_tracking(object_in_range, sound_detected,
                               distance_cm, display_direction_deg);
         sleep_ms(10);
     }

@@ -5,15 +5,17 @@
 #include <stdbool.h>
 #include "hardware/spi.h"
 
-// SPI Peripheral & Pin Assignments (SPI1 on GP24-GP28)
+// SPI1 on Proton header pins that are free in the tracking firmware.
 #define DISPLAY_SPI_PORT    spi1
-#define DISPLAY_BAUDRATE    (10 * 1000 * 1000) // Conservative ILI9341 SPI clock
+#ifndef DISPLAY_BAUDRATE
+#define DISPLAY_BAUDRATE    8000000u
+#endif
 
-#define DISPLAY_PIN_DC      24
-#define DISPLAY_PIN_CS      25
-#define DISPLAY_PIN_SCK     26
-#define DISPLAY_PIN_MOSI    27
-#define DISPLAY_PIN_RST     28
+#define DISPLAY_PIN_DC      12
+#define DISPLAY_PIN_CS      13
+#define DISPLAY_PIN_SCK     14
+#define DISPLAY_PIN_MOSI    15
+#define DISPLAY_PIN_RST     16
 
 // Native Panel Dimensions (Portrait)
 #define ILI9341_TFTWIDTH    240
@@ -44,7 +46,7 @@ void display_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 void display_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
 void display_fill_screen(uint16_t color);
 void display_draw_pixel(uint16_t x, uint16_t y, uint16_t color);
-void display_show_tracking(bool person_present,
+void display_show_tracking(bool object_in_range,
                            bool sound_detected,
                            float distance_cm,
                            float direction_deg);

@@ -1,8 +1,11 @@
 #include "display.h"
+#include "config.h"
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define ILI9341_SWRESET     0x01
@@ -32,33 +35,26 @@ static inline void cs_deselect(void)
     gpio_put(DISPLAY_PIN_CS, 1);
 }
 
-static void write_command(uint8_t command)
+static void start_command(uint8_t command)
 {
     gpio_put(DISPLAY_PIN_DC, 0);
     cs_select();
     spi_write_blocking(DISPLAY_SPI_PORT, &command, 1);
-    cs_deselect();
-}
-
-static void write_data(const uint8_t *data, size_t count)
-{
-    gpio_put(DISPLAY_PIN_DC, 1);
-    cs_select();
-    spi_write_blocking(DISPLAY_SPI_PORT, data, count);
-    cs_deselect();
-}
-
-static void write_data_byte(uint8_t value)
-{
-    write_data(&value, 1);
 }
 
 static void write_register(uint8_t command, const uint8_t *data, size_t count)
 {
-    write_command(command);
+    start_command(command);
     if (count > 0) {
-        write_data(data, count);
+        gpio_put(DISPLAY_PIN_DC, 1);
+        spi_write_blocking(DISPLAY_SPI_PORT, data, count);
     }
+    cs_deselect();
+}
+
+static void write_command(uint8_t command)
+{
+    write_register(command, NULL, 0);
 }
 
 static void hardware_reset(void)
@@ -74,12 +70,13 @@ static void hardware_reset(void)
 void display_init(display_rotation_t rotation)
 {
     spi_init(DISPLAY_SPI_PORT, DISPLAY_BAUDRATE);
+    spi_set_format(DISPLAY_SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     gpio_set_function(DISPLAY_PIN_SCK, GPIO_FUNC_SPI);
     gpio_set_function(DISPLAY_PIN_MOSI, GPIO_FUNC_SPI);
 
     gpio_init(DISPLAY_PIN_CS);
-    gpio_set_dir(DISPLAY_PIN_CS, GPIO_OUT);
     cs_deselect();
+    gpio_set_dir(DISPLAY_PIN_CS, GPIO_OUT);
     gpio_init(DISPLAY_PIN_DC);
     gpio_set_dir(DISPLAY_PIN_DC, GPIO_OUT);
     gpio_init(DISPLAY_PIN_RST);
@@ -112,24 +109,17 @@ void display_init(display_rotation_t rotation)
     write_register(0xED, power_sequence, sizeof(power_sequence));
     write_register(0xE8, driver_timing, sizeof(driver_timing));
     write_register(0xCB, power_a, sizeof(power_a));
-    write_command(0xF7);
-    write_data_byte(0x20);
+    write_register(0xF7, (const uint8_t[]){0x20}, 1);
     write_register(0xEA, timing_enable, sizeof(timing_enable));
-    write_command(0xC0);
-    write_data_byte(0x23);
-    write_command(0xC1);
-    write_data_byte(0x10);
+    write_register(0xC0, (const uint8_t[]){0x23}, 1);
+    write_register(0xC1, (const uint8_t[]){0x10}, 1);
     write_register(0xC5, vcom1, sizeof(vcom1));
-    write_command(0xC7);
-    write_data_byte(0x86);
+    write_register(0xC7, (const uint8_t[]){0x86}, 1);
     write_register(0xB1, frame_rate, sizeof(frame_rate));
     write_register(0xB6, display_function, sizeof(display_function));
-    write_command(ILI9341_PIXFMT);
-    write_data_byte(0x55);
-    write_command(0xF2);
-    write_data_byte(0x00);
-    write_command(0x26);
-    write_data_byte(0x01);
+    write_register(ILI9341_PIXFMT, (const uint8_t[]){0x55}, 1);
+    write_register(0xF2, (const uint8_t[]){0x00}, 1);
+    write_register(0x26, (const uint8_t[]){0x01}, 1);
     write_register(0xE0, positive_gamma, sizeof(positive_gamma));
     write_register(0xE1, negative_gamma, sizeof(negative_gamma));
 
@@ -170,31 +160,25 @@ void display_set_rotation(display_rotation_t rotation)
             return;
     }
 
-    write_command(ILI9341_MADCTL);
-    write_data_byte(madctl);
+    write_register(ILI9341_MADCTL, (const uint8_t[]){madctl}, 1);
+}
+
+static void begin_pixel_write(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+    const uint8_t columns[] = {x0 >> 8, x0, x1 >> 8, x1};
+    const uint8_t rows[] = {y0 >> 8, y0, y1 >> 8, y1};
+    write_register(ILI9341_CASET, columns, sizeof(columns));
+    write_register(ILI9341_PASET, rows, sizeof(rows));
+    start_command(ILI9341_RAMWR);
+    gpio_put(DISPLAY_PIN_DC, 1);
 }
 
 void display_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
-    if (x0 > x1 || y0 > y1 || x1 >= current_width || y1 >= current_height) {
-        return;
+    if (x0 <= x1 && y0 <= y1 && x1 < current_width && y1 < current_height) {
+        begin_pixel_write(x0, y0, x1, y1);
+        cs_deselect();
     }
-
-    uint8_t data[4];
-    write_command(ILI9341_CASET);
-    data[0] = (uint8_t)(x0 >> 8);
-    data[1] = (uint8_t)x0;
-    data[2] = (uint8_t)(x1 >> 8);
-    data[3] = (uint8_t)x1;
-    write_data(data, sizeof(data));
-
-    write_command(ILI9341_PASET);
-    data[0] = (uint8_t)(y0 >> 8);
-    data[1] = (uint8_t)y0;
-    data[2] = (uint8_t)(y1 >> 8);
-    data[3] = (uint8_t)y1;
-    write_data(data, sizeof(data));
-    write_command(ILI9341_RAMWR);
 }
 
 void display_fill_rect(uint16_t x,
@@ -213,8 +197,6 @@ void display_fill_rect(uint16_t x,
         height = current_height - y;
     }
 
-    display_set_window(x, y, x + width - 1, y + height - 1);
-
     uint8_t high_byte = (uint8_t)(color >> 8);
     uint8_t low_byte = (uint8_t)color;
     uint8_t pixels[128];
@@ -224,8 +206,7 @@ void display_fill_rect(uint16_t x,
     }
 
     uint32_t remaining = (uint32_t)width * height;
-    gpio_put(DISPLAY_PIN_DC, 1);
-    cs_select();
+    begin_pixel_write(x, y, x + width - 1, y + height - 1);
     while (remaining > 0) {
         uint32_t chunk_pixels = remaining > 64 ? 64 : remaining;
         spi_write_blocking(DISPLAY_SPI_PORT, pixels, chunk_pixels * 2);
@@ -245,9 +226,10 @@ void display_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
         return;
     }
 
-    display_set_window(x, y, x, y);
     uint8_t pixel[] = {(uint8_t)(color >> 8), (uint8_t)color};
-    write_data(pixel, sizeof(pixel));
+    begin_pixel_write(x, y, x, y);
+    spi_write_blocking(DISPLAY_SPI_PORT, pixel, sizeof(pixel));
+    cs_deselect();
 }
 
 static const uint8_t *glyph_for(char character)
@@ -274,7 +256,7 @@ static const uint8_t *glyph_for(char character)
         {'4', {0x18, 0x14, 0x12, 0x7F, 0x10}}, {'5', {0x27, 0x45, 0x45, 0x45, 0x39}},
         {'6', {0x3C, 0x4A, 0x49, 0x49, 0x30}}, {'7', {0x01, 0x71, 0x09, 0x05, 0x03}},
         {'8', {0x36, 0x49, 0x49, 0x49, 0x36}}, {'9', {0x06, 0x49, 0x49, 0x29, 0x1E}},
-        {'-', {0x08, 0x08, 0x08, 0x08, 0x08}}, {'.', {0x00, 0x60, 0x60, 0x00, 0x00}},
+        {'+', {0x08, 0x08, 0x3E, 0x08, 0x08}}, {'-', {0x08, 0x08, 0x08, 0x08, 0x08}}, {'.', {0x00, 0x60, 0x60, 0x00, 0x00}},
         {' ', {0x00, 0x00, 0x00, 0x00, 0x00}}
     };
 
@@ -312,97 +294,147 @@ static void draw_centered_text(int y,
     draw_text(((int)current_width - text_width) / 2, y, text, color, scale);
 }
 
-static void draw_arrow(int direction, uint16_t color)
+enum {
+    RADAR_RADIUS = 92,
+    RADAR_WIDTH = 2 * RADAR_RADIUS + 1,
+    RADAR_HEIGHT = RADAR_RADIUS + 1,
+    RADAR_TOP = 16,
+    TRACKING_REFRESH_MS = 250,
+};
+
+#define RADAR_GRID_COLOR 0x238A
+#define DEG_TO_RAD 0.01745329252f
+
+// RGB565 in wire byte order, allowing the entire radar to use one SPI write.
+static uint8_t radar_pixels[RADAR_WIDTH * RADAR_HEIGHT * 2];
+
+static void radar_pixel(int x, int y, uint16_t color)
 {
-    const int center_y = 205;
-    if (direction > 0) {
-        display_fill_rect(48, center_y - 5, 132, 10, color);
-        for (int i = 0; i < 40; ++i) {
-            int half_height = i * 3 / 2;
-            display_fill_rect((uint16_t)(180 + i),
-                              (uint16_t)(center_y - half_height),
-                              1, (uint16_t)(half_height * 2 + 10), color);
-        }
-    } else if (direction < 0) {
-        display_fill_rect(60, center_y - 5, 132, 10, color);
-        for (int i = 0; i < 40; ++i) {
-            int half_height = i * 3 / 2;
-            display_fill_rect((uint16_t)(20 + i),
-                              (uint16_t)(center_y - half_height),
-                              1, (uint16_t)(half_height * 2 + 10), color);
-        }
-    } else {
-        display_fill_rect(115, 165, 10, 80, color);
-        for (int i = 0; i < 40; ++i) {
-            int half_width = i * 3 / 2;
-            display_fill_rect((uint16_t)(120 - half_width),
-                              (uint16_t)(165 + i),
-                              (uint16_t)(half_width * 2 + 10), 1, color);
-        }
+    if (x < 0 || x >= RADAR_WIDTH || y < 0 || y >= RADAR_HEIGHT) {
+        return;
+    }
+    size_t offset = 2u * (y * RADAR_WIDTH + x);
+    radar_pixels[offset] = (uint8_t)(color >> 8);
+    radar_pixels[offset + 1] = (uint8_t)color;
+}
+
+static void radar_line(int x0, int y0, int x1, int y1, uint16_t color)
+{
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+    radar_pixel(x0, y0, color);
+    for (int i = 1; i <= steps; ++i) {
+        radar_pixel(x0 + i * dx / steps, y0 + i * dy / steps, color);
     }
 }
 
-void display_show_tracking(bool person_present,
+static void draw_radar(bool sound_detected, int angle_deg,
+                       bool object_in_range, int distance_cm, bool aligned)
+{
+    memset(radar_pixels, 0, sizeof(radar_pixels));
+    const int center = RADAR_RADIUS;
+    for (int ring = 1; ring <= 3; ++ring) {
+        int radius = ring * RADAR_RADIUS / 3;
+        for (int angle = -90; angle <= 90; ++angle) {
+            int x = center + (int)lroundf(radius * sinf(angle * DEG_TO_RAD));
+            int y = (int)lroundf(radius * cosf(angle * DEG_TO_RAD));
+            radar_pixel(x, y, RADAR_GRID_COLOR);
+        }
+    }
+    radar_line(0, 0, RADAR_WIDTH - 1, 0, RADAR_GRID_COLOR);
+    radar_line(center, 0, center, RADAR_RADIUS, RADAR_GRID_COLOR);
+
+    if (sound_detected) {
+        float angle = angle_deg * DEG_TO_RAD;
+        float right = sinf(angle);
+        float forward = cosf(angle);
+        int length = RADAR_RADIUS - 5;
+        int tip_x = center + (int)lroundf(length * right);
+        int tip_y = (int)lroundf(length * forward);
+        int back_x = tip_x - (int)lroundf(10 * right);
+        int back_y = tip_y - (int)lroundf(10 * forward);
+        int wing_x = (int)lroundf(5 * forward);
+        int wing_y = (int)lroundf(5 * right);
+        radar_line(center, 0, tip_x, tip_y, COLOR_CYAN);
+        radar_line(tip_x, tip_y, back_x + wing_x, back_y - wing_y, COLOR_CYAN);
+        radar_line(tip_x, tip_y, back_x - wing_x, back_y + wing_y, COLOR_CYAN);
+    }
+
+    if (object_in_range) {
+        // A fixed rangefinder supplies distance along its forward beam.
+        int y = (int)lroundf(distance_cm * (RADAR_RADIUS - 4) /
+                             DISPLAY_OBJECT_MAX_CM);
+        uint16_t color = aligned ? COLOR_GREEN : COLOR_YELLOW;
+        for (int dy = -3; dy <= 3; ++dy) {
+            int half_width = 3 - abs(dy);
+            radar_line(center - half_width, y + dy,
+                       center + half_width, y + dy, color);
+        }
+    }
+
+    uint16_t left = (current_width - RADAR_WIDTH) / 2;
+    begin_pixel_write(left, RADAR_TOP, left + RADAR_WIDTH - 1,
+                      RADAR_TOP + RADAR_HEIGHT - 1);
+    spi_write_blocking(DISPLAY_SPI_PORT, radar_pixels, sizeof(radar_pixels));
+    cs_deselect();
+}
+
+void display_show_tracking(bool object_in_range,
                            bool sound_detected,
                            float distance_cm,
                            float direction_deg)
 {
-    static bool first_update = true;
-    static bool previous_person_present;
-    static bool previous_sound_detected;
-    static int previous_direction = 2;
-    static int previous_distance_bucket = -2;
+    static bool drawn;
+    static uint64_t last_update_ms;
+    static bool previous_object;
+    static bool previous_sound;
+    static int previous_angle;
+    static int previous_distance;
 
-    int distance_display = distance_cm < 0.0f
-        ? -1
-        : (int)(distance_cm + 0.5f);
-    int direction = !sound_detected ? 2 : (direction_deg > 5.0f ? 1 :
-                                           (direction_deg < -5.0f ? -1 : 0));
-
-    if (!first_update &&
-        person_present == previous_person_present &&
-        sound_detected == previous_sound_detected &&
-        direction == previous_direction &&
-        distance_display == previous_distance_bucket) {
+    int angle = sound_detected ? (int)lroundf(direction_deg) : 0;
+    int distance = distance_cm >= 0.0f ? (int)lroundf(distance_cm) : -1;
+    uint64_t now_ms = to_ms_since_boot(get_absolute_time());
+    if (drawn && (now_ms - last_update_ms < TRACKING_REFRESH_MS ||
+                  (previous_object == object_in_range &&
+                   previous_sound == sound_detected &&
+                   previous_angle == angle && previous_distance == distance))) {
         return;
     }
-    first_update = false;
-    previous_person_present = person_present;
-    previous_sound_detected = sound_detected;
-    previous_direction = direction;
-    previous_distance_bucket = distance_display;
 
-    display_fill_screen(COLOR_BLACK);
-    draw_centered_text(18, "SOUND TRACKER", COLOR_CYAN, 2);
-    display_fill_rect(20, 48, current_width - 40, 2, COLOR_BLUE);
+    bool aligned = object_in_range && sound_detected &&
+                   abs(angle) <= DISPLAY_ECHO_MATCH_DEG;
+    if (!drawn) {
+        draw_centered_text(122, "SOUND TRACKER", COLOR_CYAN, 2);
+        display_fill_rect(20, 145, current_width - 40, 2, COLOR_BLUE);
+    }
 
-    if (!person_present) {
-        draw_centered_text(68, "NO PERSON", COLOR_RED, 2);
-        draw_centered_text(105, "MOVE INTO", COLOR_WHITE, 2);
-        draw_centered_text(128, "RANGE", COLOR_WHITE, 2);
-    } else if (sound_detected) {
-        draw_centered_text(68, "PERSON HERE", COLOR_GREEN, 2);
-        if (direction > 0) {
-            draw_centered_text(125, "RIGHT", COLOR_YELLOW, 3);
-        } else if (direction < 0) {
-            draw_centered_text(125, "LEFT", COLOR_YELLOW, 3);
-        } else {
-            draw_centered_text(125, "CENTER", COLOR_YELLOW, 3);
+    if (!drawn || previous_sound != sound_detected || previous_angle != angle) {
+        char angle_text[24] = "LISTENING";
+        if (sound_detected) {
+            snprintf(angle_text, sizeof(angle_text), "%+d DEG", angle);
         }
-        draw_arrow(direction, COLOR_CYAN);
-    } else {
-        draw_centered_text(68, "PERSON HERE", COLOR_GREEN, 2);
-        draw_centered_text(125, "LISTENING", COLOR_YELLOW, 2);
+        display_fill_rect(0, 158, current_width, 22, COLOR_BLACK);
+        draw_centered_text(158, angle_text, COLOR_CYAN, 3);
     }
 
-    char distance_text[24];
-    if (distance_display >= 0) {
-        snprintf(distance_text, sizeof(distance_text), "DISTANCE %d CM",
-                 distance_display);
-    } else {
-        snprintf(distance_text, sizeof(distance_text), "DISTANCE -- CM");
+    draw_radar(sound_detected, angle, object_in_range, distance, aligned);
+    display_fill_rect(0, 190, current_width, 42, COLOR_BLACK);
+    const char *echo_status = aligned ? "ECHO NEAR BEARING" :
+                              object_in_range ? "OBJECT AHEAD" : "NO NEAR ECHO";
+    draw_centered_text(191, echo_status, aligned ? COLOR_GREEN : COLOR_WHITE, 2);
+    char range_text[24] = "RANGE -- CM";
+    if (distance >= 0) {
+        snprintf(range_text, sizeof(range_text), "RANGE %d CM", distance);
     }
-    draw_centered_text(280, distance_text, COLOR_WHITE, 2);
+    draw_centered_text(213, range_text, COLOR_WHITE, 2);
+
+    drawn = true;
+    last_update_ms = now_ms;
+    previous_object = object_in_range;
+    previous_sound = sound_detected;
+    previous_angle = angle;
+    previous_distance = distance;
 }
 
 uint16_t display_get_width(void)

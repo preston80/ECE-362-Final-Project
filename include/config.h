@@ -12,7 +12,7 @@
 
 #define MIC_SAMPLE_RATE    48000u
 #define MIC_WARMUP_FRAMES  256u
-#define MIC_TEST_FRAMES    4096u
+#define MIC_TEST_FRAMES    3072u
 
 // =====================================================
 // SERVO CONFIGURATION
@@ -45,19 +45,21 @@
 
 #define ULTRASONIC_TRIG_PIN       10u
 #define ULTRASONIC_ECHO_PIN       11u
-#define DISPLAY_PERSON_MIN_CM     20.0f
-#define DISPLAY_PERSON_MAX_CM     150.0f
+#define DISPLAY_OBJECT_MIN_CM     20.0f
+#define DISPLAY_OBJECT_MAX_CM     150.0f
+// Fixed ultrasonic sensor faces straight ahead of the microphone pair.
+#define DISPLAY_ECHO_MATCH_DEG   8
 #define DISPLAY_SOUND_HOLD_MS     1500u
 #define AUDIO_TO_SERVO_GAIN       3.0f
 #define AUDIO_TRACK_WINDOW        3u
 #define AUDIO_TRACK_MIN_HITS      2u
-#define AUDIO_TRACK_SWITCH_HITS   4u
-#define AUDIO_TRACK_CENTER_HITS   16u
+#define AUDIO_TRACK_SWITCH_HITS   3u
+#define AUDIO_TRACK_CENTER_HITS   6u
 #define AUDIO_TRACK_ALPHA         0.35f
 #define AUDIO_TRACK_HOLD_BAND_DEG 10.0f
 #define AUDIO_TRACK_CENTER_DEADBAND_DEG 5.0f
 #define AUDIO_TRACK_CANDIDATE_DEG 15.0f
-#define AUDIO_TRACK_CANDIDATE_GAP_MS 300u
+#define AUDIO_TRACK_CANDIDATE_GAP_MS 450u
 #define AUDIO_TRACK_RESET_MS      2000u
 #define SERVO_TRACK_MIN_ANGLE     10.0f
 #define SERVO_TRACK_MAX_ANGLE     170.0f
