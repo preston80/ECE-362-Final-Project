@@ -2,41 +2,39 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "pico/stdlib.h"
+#include "config.h"
 #include "ultrasonic.h"
-
-#define TRIG_PIN 10
-#define ECHO_PIN 11
 
 #define ECHO_TIMEOUT_US 30000
 
 void ultrasonic_init(void) {
     // TRIG is an output.
-    gpio_init(TRIG_PIN);
-    gpio_set_dir(TRIG_PIN, GPIO_OUT);
-    gpio_put(TRIG_PIN, 0);
+    gpio_init(ULTRASONIC_TRIG_PIN);
+    gpio_set_dir(ULTRASONIC_TRIG_PIN, GPIO_OUT);
+    gpio_put(ULTRASONIC_TRIG_PIN, 0);
 
     // ECHO is an input.
-    gpio_init(ECHO_PIN);
-    gpio_set_dir(ECHO_PIN, GPIO_IN);
-    gpio_disable_pulls(ECHO_PIN);
+    gpio_init(ULTRASONIC_ECHO_PIN);
+    gpio_set_dir(ULTRASONIC_ECHO_PIN, GPIO_IN);
+    gpio_disable_pulls(ULTRASONIC_ECHO_PIN);
 }
 
 void ultrasonic_trigger(void) {
     // Ensure TRIG is LOW first.
-    gpio_put(TRIG_PIN, 0);
+    gpio_put(ULTRASONIC_TRIG_PIN, 0);
     sleep_us(2);
 
     // Send the 10 microsecond pulse.
-    gpio_put(TRIG_PIN, 1);
+    gpio_put(ULTRASONIC_TRIG_PIN, 1);
     sleep_us(10);
 
     // Finish the pulse.
-    gpio_put(TRIG_PIN, 0);
+    gpio_put(ULTRASONIC_TRIG_PIN, 0);
 }
 
 float ultrasonic_read_cm(void) {
     // A previously HIGH ECHO signal is invalid.
-    if (gpio_get(ECHO_PIN)) {
+    if (gpio_get(ULTRASONIC_ECHO_PIN)) {
         return -1.0f;
     }
 
@@ -47,7 +45,7 @@ float ultrasonic_read_cm(void) {
     uint64_t deadline =
         time_us_64() + ECHO_TIMEOUT_US;
 
-    while (gpio_get(ECHO_PIN) == 0) {
+    while (gpio_get(ULTRASONIC_ECHO_PIN) == 0) {
         if (time_us_64() >= deadline) {
             return -1.0f;
         }
@@ -59,7 +57,7 @@ float ultrasonic_read_cm(void) {
     // Wait for ECHO to become LOW.
     deadline = start_time + ECHO_TIMEOUT_US;
 
-    while (gpio_get(ECHO_PIN) == 1) {
+    while (gpio_get(ULTRASONIC_ECHO_PIN) == 1) {
         if (time_us_64() >= deadline) {
             return -1.0f;
         }

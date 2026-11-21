@@ -72,10 +72,10 @@ bool audio_estimate_angle(const int32_t *left_buf,
         }
     }
 
-    // 4. Normalized correlation confidence check (reject incoherent echoes/noise < 0.35)
+    // 4. Reject weakly correlated noise and reflections.
     double norm = sqrt((double)energy_l * (double)energy_r);
     double confidence = (double)best_corr / norm;
-    if (confidence < 0.35) {
+    if (confidence < MIN_CORRELATION_CONFIDENCE) {
         return false;
     }
 
